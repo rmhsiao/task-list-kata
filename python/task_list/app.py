@@ -1,7 +1,44 @@
 from typing import Dict, List
 
+from task_list import dtos
 from task_list.console import Console
+from task_list.enums import CommandName
 from task_list.task import Task
+
+
+class CommandParser:
+
+    command_map: dict[
+        str,
+        type[dtos.Command] | dict[str, type[dtos.Command]]
+    ] = {
+        CommandName.SHOW: dtos.ShowCommand,
+        CommandName.ADD: {
+            'project': dtos.AddProjectCommand,
+            'task': dtos.AddTaskCommand,
+        },
+        CommandName.CHECK: dtos.CheckTaskCommand,
+        CommandName.UNCHECK: dtos.UncheckTaskCommand,
+        CommandName.HELP: dtos.HelpCommand,
+        CommandName.QUIT: dtos.QuitCommand,
+    }
+
+    def parse(self, command_line: str) -> dtos.Command:
+        # ValueError: not enough values to unpack
+        # TODO: add a custom error
+        command_name, *rest_pieces = command_line.split()
+
+        command_class_or_sub_map = self.command_map[command_name]
+
+        if isinstance(command_class_or_sub_map, type):
+            command_class = command_class_or_sub_map
+            command = command_class(*rest_pieces)
+        else:
+            sub_command_name, *sub_command_args = rest_pieces
+            sub_command_class = command_class_or_sub_map[sub_command_name]
+            command = sub_command_class(*sub_command_args)
+
+        return command
 
 
 class TaskList:
