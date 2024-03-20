@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import cast
 
 from task_list import dtos
 from task_list.console import Console
@@ -42,71 +42,81 @@ class CommandParser:
 
 
 class TaskList:
-    QUIT = "quit"
 
     def __init__(self, console: Console) -> None:
         self.console = console
         self.last_id: int = 0
-        self.tasks: Dict[str, List[Task]] = dict()
+        self.tasks: dict[str, list[Task]] = dict()
+
+        self.command_parser = CommandParser()
 
     def run(self) -> None:
         while True:
-            command = self.console.input("> ")
-            if command == self.QUIT:
+            command_line = self.console.input("> ")
+
+            try:
+                command = self.command_parser.parse(command_line)
+            except (KeyError, ValueError):
+                self.error(command_line)
+                continue
+
+            if command.name == CommandName.QUIT:
                 break
+
             self.execute(command)
 
-    def execute(self, command_line: str) -> None:
-        command_rest = command_line.split(" ", 1)
-        command = command_rest[0]
-        if command == "show":
+    def execute(self, command: dtos.Command) -> None:
+        if command.name == CommandName.SHOW:
             self.show()
-        elif command == "add":
-            self.add(command_rest[1])
-        elif command == "check":
-            self.check(command_rest[1])
-        elif command == "uncheck":
-            self.uncheck(command_rest[1])
-        elif command == "help":
+        elif command.name == CommandName.ADD:
+            self.add(cast(dtos.AddProjectCommand, command))
+        elif command.name == CommandName.CHECK:
+            self.check(cast(dtos.CheckTaskCommand, command))
+        elif command.name == CommandName.UNCHECK:
+            self.uncheck(cast(dtos.UncheckTaskCommand, command))
+        elif command.name == CommandName.HELP:
             self.help()
-        else:
-            self.error(command)
 
     def show(self) -> None:
         for project, tasks in self.tasks.items():
             self.console.print(project)
             for task in tasks:
-                self.console.print(f"  [{'x' if task.is_done() else ' '}] {task.id}: {task.description}")
+                self.console.print(f"  [{'x' if task.is_done() else ' '}] "
+                                   f"{task.id}: {task.description}")
             self.console.print()
 
-    def add(self, command_line: str) -> None:
-        sub_command_rest = command_line.split(" ", 1)
-        sub_command = sub_command_rest[0]
-        if sub_command == "project":
-            self.add_project(sub_command_rest[1])
-        elif sub_command == "task":
-            project_task = sub_command_rest[1].split(" ", 1)
-            self.add_task(project_task[0], project_task[1])
+    def add(
+        self, command: dtos.AddProjectCommand | dtos.AddTaskCommand
+    ) -> None:
+        if command.sub_command == "project":
+            self.add_project(cast(dtos.AddProjectCommand, command))
+        elif command.sub_command == "task":
+            self.add_task(cast(dtos.AddTaskCommand, command))
 
-    def add_project(self, name: str) -> None:
-        self.tasks[name] = []
+    def add_project(self, command: dtos.AddProjectCommand) -> None:
+        self.tasks[command.project_name] = []
 
-    def add_task(self, project: str, description: str) -> None:
-        project_tasks = self.tasks.get(project)
+    def add_task(self, command: dtos.AddTaskCommand) -> None:
+        project_tasks = self.tasks.get(command.project_name)
         if project_tasks is None:
-            self.console.print(f"Could not find a project with the name {project}.")
+            self.console.print("Could not find a project with the name "
+                               f"{command.project_name}.")
             self.console.print()
             return
-        project_tasks.append(Task(self.next_id(), description, False))
+        project_tasks.append(Task(self.next_id(), command.description, False))
 
-    def check(self, id_string: str) -> None:
-        self.set_done(id_string, True)
+    def check(self, command: dtos.CheckTaskCommand) -> None:
+        self.set_done(command, True)
 
-    def uncheck(self, id_string: str) -> None:
-        self.set_done(id_string, False)
+    def uncheck(self, command: dtos.UncheckTaskCommand) -> None:
+        self.set_done(command, False)
 
-    def set_done(self, id_string: str, done: bool) -> None:
-        id_ = int(id_string)
+    def set_done(
+        self,
+        command: dtos.CheckTaskCommand | dtos.UncheckTaskCommand,
+        done: bool
+    ) -> None:
+        id_ = int(command.task_id)
         for project, tasks in self.tasks.items():
             for task in tasks:
                 if task.id == id_:
@@ -124,11 +134,11 @@ class TaskList:
         self.console.print("  uncheck <task ID>")
         self.console.print()
 
-    def error(self, command: str) -> None:
-        self.console.print(f"I don't know what the command {command} is.")
+    def error(self, command_line: str) -> None:
+        self.console.print("I don't know what the command "
+                           f"'{command_line}' is.")
         self.console.print()
 
     def next_id(self) -> int:
         self.last_id += 1
         return self.last_id
-
